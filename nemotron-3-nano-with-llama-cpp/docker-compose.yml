@@ -1,0 +1,50 @@
+services:
+  nemotron:
+    build:
+      context: .
+      args:
+        # Set HF_TOKEN here (or in a .env file) to download the model at build time.
+        # Leave SKIP_MODEL_DOWNLOAD=true to download at first run instead.
+        HF_TOKEN: "${HF_TOKEN:-}"
+        SKIP_MODEL_DOWNLOAD: "${SKIP_MODEL_DOWNLOAD:-false}"
+
+    image: nemotron-dgx-spark:latest
+    container_name: nemotron
+
+    # ── Full GPU access ───────────────────────────────────────────────────────
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all          # use every GPU on the DGX Spark
+              capabilities: [gpu]
+
+    # ── Model persistence (avoids re-downloading) ─────────────────────────────
+    volumes:
+      - nemotron-models:/models
+
+    # ── Runtime tuning (override any value without rebuilding) ───────────────
+    environment:
+      MODEL_PATH:    /models/nemotron3-gguf/Nemotron-3-Nano-30B-A3B-UD-Q8_K_XL.gguf
+      SERVER_HOST:   "0.0.0.0"
+      SERVER_PORT:   "30000"
+      N_GPU_LAYERS:  "99"
+      CTX_SIZE:      "${CTX_SIZE:-8192}"   # override with e.g. CTX_SIZE=131072
+      THREADS:       "8"
+      HF_TOKEN:      "${HF_TOKEN:-}"
+
+    ports:
+      - "30000:30000"
+
+    restart: unless-stopped
+
+    # Expose /dev/nvidia* and the DRI for full CUDA visibility
+    # (already covered by the deploy.resources block above for Compose v2+)
+    # Uncomment the lines below if running with `docker run` directly instead:
+    # device_requests:
+    #   - capabilities: [[gpu]]
+
+volumes:
+  nemotron-models:
+    driver: local
